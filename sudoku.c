@@ -3,10 +3,9 @@
 #include<stdlib.h>
 #include<pthread.h>
 
-typedef enum{
-    row, col,
-    square
-}type;
+//bit mask for checking if sudokuresults is valid 
+enum { VALID_BITS = 0b1111111110 };
+
 
 typedef struct {
     int row;
@@ -26,7 +25,7 @@ Gamebox bldsudokuboard(  Gamebox gamebox ){
     for( int i = 0 ; i < 9 ; i++ ){
         for( int j = 0 ;j < 9 ; j++){
             fscanf( file, "%d", &gamebox.sudokuboard[i][j]);
-            }    
+        }    
     }
     fclose( file);
     return gamebox;
@@ -43,55 +42,87 @@ void printsudokuboard( Gamebox gamebox ){
 }
 
 //rowid should be 0 1 ... 8
-int rowcheck(  Gamebox gamebox , int rowid ){
+int rowcheck(  Gamebox* gamebox ){
+    int rowid = gamebox->row;
     unsigned sudokuresults = 0;
-    unsigned validresults = 0;
-    for( int i = 1 ; i <= 9 ; i++ ){
-        unsigned tmp = 1 << i; 
-        validresults |= tmp; 
-    }
+
     for( int i = 0 ; i < 9 ; i++ ){
-        printf( "%d", gamebox.sudokuboard[rowid][i]);
-        unsigned tmp = 1 << gamebox.sudokuboard[rowid][i];
+        unsigned tmp = 1 << gamebox->sudokuboard[rowid][i];
         sudokuresults |= tmp; 
     }
-    if( ( sudokuresults & validresults) == validresults ){
-    return 1;
+    if( sudokuresults == VALID_BITS ){
+        return 1;
     }
     else return 0; 
 }
 
-void* startroutine( void* gamebox){
-    Gamebox* soduku = (Gamebox*) gamebox;
-    soduku->result = rowcheck( *soduku, soduku->row);
+int colcheck(  Gamebox* gamebox ){
+    int colid = gamebox->col;
+    unsigned sudokuresults = 0;
+
+    for( int i = 0 ; i < 9 ; i++ ){
+        unsigned tmp = 1 << gamebox->sudokuboard[i][colid];
+        sudokuresults |= tmp; 
+    }
+    if( sudokuresults == VALID_BITS ){
+        return 1;
+    }
+    else return 0; 
+}
+
+void* rowstartroutine( void* gamebox){
+    Gamebox* sudoku = (Gamebox*) gamebox;
+    sudoku->result = rowcheck( sudoku);
     return NULL;
 }
- 
+
+void* colstartroutine( void* gamebox){
+    Gamebox* sudoku = (Gamebox*) gamebox;
+    sudoku->result = colcheck( sudoku);
+    return NULL;
+}
+
 int main( int argc, char *argv[]){
    
     Gamebox gamebox;
     gamebox = bldsudokuboard( gamebox);
-    pthread_t tid[9]; 
-    int results[9];
-    Gamebox** t_boxes = malloc( 9 * sizeof(Gamebox*));   
+    printsudokuboard( gamebox);
+    pthread_t tid[18]; 
+    int results[18];
+    int t_count = 0;
+    Gamebox** t_boxes = malloc( 18 * sizeof(Gamebox*));  
 
     for( int i = 0 ; i < 9 ; i++ ){
-        Gamebox* gamebox = malloc( sizeof(Gamebox));
-        gamebox->row = i;
-        t_boxes[i] = gamebox;
-        pthread_create( &tid[i], NULL, startroutine, (void*) &t_boxes[i]);
+        Gamebox* threadboard = (Gamebox*) malloc( sizeof( Gamebox));
+        threadboard->row = i;
+        threadboard->sudokuboard = gamebox.sudokuboard;
+        t_boxes[t_count] = threadboard;
+        pthread_create( &tid[t_count], NULL, rowstartroutine, (void*) t_boxes[t_count]);
+        t_count++;
     }
     for( int i = 0 ; i < 9 ; i++ ){
+        Gamebox* threadboard = (Gamebox*) malloc( sizeof( Gamebox));
+        threadboard->col = i;
+        threadboard->sudokuboard = gamebox.sudokuboard;
+        t_boxes[t_count] = threadboard;
+        pthread_create( &tid[t_count], NULL, colstartroutine, (void*) t_boxes[t_count]);
+        t_count++;
+    }
+
+    for( int i = 0 ; i < 18 ; i++ ){
         pthread_join( tid[i], NULL );
         results[i] = t_boxes[i]->result;
+        printf("result %d: %d ", i , t_boxes[i]->result);
+        puts(" ");
     }
-    for( int i = 0 ; i < 9 ; i++ ){
+    for( int i = 0 ; i < 18 ; i++ ){
         if( results[i] != 1 ){
             puts("not a valid sudoku!");
             return 1;
         }
     }
     puts("valid sudoku!");
+    
     return 0;
 }
 
